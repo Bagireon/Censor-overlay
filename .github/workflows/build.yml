@@ -63,8 +63,8 @@ jobs:
                   applicationId "com.example.censoroverlay"
                   minSdk 26
                   targetSdk 34
-                  versionCode 1
-                  versionName "0.2"
+                  versionCode 2
+                  versionName "0.3"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -143,38 +143,42 @@ jobs:
 
           cat > app/src/main/res/layout/activity_main.xml << 'FILE_EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:orientation="vertical"
-              android:padding="16dp"
+          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
               android:layout_width="match_parent"
               android:layout_height="match_parent">
-              
-              <EditText android:id="@+id/words"
-                  android:hint="Слова (порно,секс)"
+              <LinearLayout
+                  android:orientation="vertical"
+                  android:padding="16dp"
                   android:layout_width="match_parent"
-                  android:layout_height="wrap_content"/>
-              <EditText android:id="@+id/replacements"
-                  android:hint="Замены ([скрыто],[скрыто])"
-                  android:layout_width="match_parent"
-                  android:layout_height="wrap_content"/>
-              
-              <TextView android:text="Режим цензуры:" android:layout_marginTop="10dp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-              <RadioGroup android:id="@+id/modeGroup" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
-                  <RadioButton android:id="@+id/modeBlack" android:text="Черный" android:checked="true" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                  <RadioButton android:id="@+id/modePixel" android:text="Пиксели" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-                  <RadioButton android:id="@+id/modeBlur" android:text="Размытие" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-              </RadioGroup>
+                  android:layout_height="wrap_content">
+                  
+                  <EditText android:id="@+id/words"
+                      android:hint="Слова (порно,секс)"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"/>
+                  <EditText android:id="@+id/replacements"
+                      android:hint="Замены ([скрыто],[скрыто])"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"/>
+                  
+                  <TextView android:text="Режим цензуры:" android:layout_marginTop="10dp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                  <RadioGroup android:id="@+id/modeGroup" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+                      <RadioButton android:id="@+id/modeBlack" android:text="Черный" android:checked="true" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                      <RadioButton android:id="@+id/modePixel" android:text="Пиксели" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                      <RadioButton android:id="@+id/modeBlur" android:text="Размытие" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+                  </RadioGroup>
 
-              <CheckBox android:id="@+id/timerCheck"
-                  android:text="Увеличивать цензуру со временем (Таймер)"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"/>
-              
-              <Button android:id="@+id/btnOverlay" android:text="1. Разрешить оверлей" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-              <Button android:id="@+id/btnAccessibility" android:text="2. Включить Accessibility" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-              <Button android:id="@+id/btnStart" android:text="3. Старт" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-              <Button android:id="@+id/btnStop" android:text="Стоп" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-          </LinearLayout>
+                  <CheckBox android:id="@+id/timerCheck"
+                      android:text="Увеличивать цензуру со временем"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"/>
+                  
+                  <Button android:id="@+id/btnOverlay" android:text="1. Разрешить оверлей" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                  <Button android:id="@+id/btnAccessibility" android:text="2. Включить Accessibility" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                  <Button android:id="@+id/btnStart" android:text="3. Старт" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                  <Button android:id="@+id/btnStop" android:text="Стоп" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+              </LinearLayout>
+          </ScrollView>
           FILE_EOF
 
           cat > app/src/main/java/com/example/censoroverlay/MainActivity.kt << 'FILE_EOF'
@@ -293,6 +297,11 @@ jobs:
                   wm.addView(view, params)
                   OverlayState.overlayView = view
               }
+              
+              override fun onDestroy() {
+                  OverlayState.overlayView = null
+                  super.onDestroy()
+              }
               override fun onBind(i: Intent?): IBinder? = null
           }
 
@@ -303,7 +312,7 @@ jobs:
               
               override fun onDraw(canvas: Canvas) {
                   for (b in OverlayState.faceBoxes) {
-                      if (b.bitmap != null) {
+                      if (b.bitmap != null && !b.bitmap.isRecycled) {
                           canvas.drawBitmap(b.bitmap, null, b.rect, paintBitmap)
                       } else {
                           canvas.drawRect(b.rect, paintBox)
@@ -338,12 +347,14 @@ jobs:
           import com.google.mlkit.vision.face.FaceDetection
           import com.google.mlkit.vision.face.FaceDetectorOptions
           import kotlin.math.max
+          import kotlin.math.min
 
           class ScreenCaptureService : Service() {
               private var projection: MediaProjection? = null
               private var reader: ImageReader? = null
               private var display: VirtualDisplay? = null
               private var startTime = 0L
+              private var isProcessing = false
 
               private val detector = FaceDetection.getClient(
                   FaceDetectorOptions.Builder().setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST).build()
@@ -351,10 +362,23 @@ jobs:
 
               override fun onCreate() {
                   super.onCreate()
-                  val ch = NotificationChannel("cap", "Capture", NotificationManager.IMPORTANCE_LOW)
+                  // Создаем канал уведомлений с максимальным приоритетом для фона
+                  val ch = NotificationChannel("cap", "Защита CensorOverlay", NotificationManager.IMPORTANCE_LOW)
+                  ch.description = "Приложение активно защищает экран"
                   (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
-                  val notif = NotificationCompat.Builder(this, "cap").setContentTitle("CensorOverlay").setSmallIcon(android.R.drawable.ic_menu_view).build()
-                  if (Build.VERSION.SDK_INT >= 29) startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(1, notif)
+                  
+                  val notif = NotificationCompat.Builder(this, "cap")
+                      .setContentTitle("CensorOverlay активен")
+                      .setContentText("Защита экрана включена...")
+                      .setSmallIcon(android.R.drawable.ic_lock_lock)
+                      .setOngoing(true)
+                      .build()
+                      
+                  if (Build.VERSION.SDK_INT >= 29) {
+                      startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                  } else {
+                      startForeground(1, notif)
+                  }
                   startService(Intent(this, OverlayService::class.java))
                   startTime = System.currentTimeMillis()
               }
@@ -371,11 +395,24 @@ jobs:
               private fun startCapture() {
                   val dm = resources.displayMetrics
                   val w = dm.widthPixels; val h = dm.heightPixels
-                  reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
+                  reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
                   display = projection?.createVirtualDisplay("cap", w, h, dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader!!.surface, null, Handler(Looper.getMainLooper()))
+                  
                   reader!!.setOnImageAvailableListener({ r ->
                       val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
-                      try { process(imageToBitmap(image)) } finally { image.close() }
+                      
+                      // Защита от перегрузки: обрабатываем только если предыдущий кадр готов
+                      if (isProcessing) {
+                          image.close()
+                          return@setOnImageAvailableListener
+                      }
+                      
+                      isProcessing = true
+                      try { 
+                          process(imageToBitmap(image)) 
+                      } finally { 
+                          image.close() 
+                      }
                   }, Handler(Looper.getMainLooper()))
               }
 
@@ -392,26 +429,40 @@ jobs:
                   val mode = prefs.getString("mode", "black") ?: "black"
                   val useTimer = prefs.getBoolean("timer", false)
                   
-                  // Логика таймера: каждые 10 секунд увеличиваем эффект
                   val elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000
                   val intensity = if (useTimer) max(4, 4 + (elapsedSeconds / 10).toInt()) else 8
 
-                  detector.process(InputImage.fromBitmap(bmp, 0)).addOnSuccessListener { faces ->
-                      OverlayState.faceBoxes = faces.map { face ->
-                          val r = face.boundingBox
-                          val rect = Rect(max(0, r.left), max(0, r.top), r.right, r.bottom)
-                          
-                          val censoredBitmap = if (mode == "black") {
-                              null
-                          } else {
-                              // Вырезаем лицо и применяем пиксель/размытие
-                              val crop = Bitmap.createBitmap(bmp, rect.left, rect.top, rect.width(), rect.height())
-                              val small = Bitmap.createScaledBitmap(crop, max(1, crop.width / intensity), max(1, crop.height / intensity), false)
-                              Bitmap.createScaledBitmap(small, crop.width, crop.height, mode == "blur") // blur = true (сглаживание)
+                  detector.process(InputImage.fromBitmap(bmp, 0)).addOnCompleteListener { task ->
+                      try {
+                          if (task.isSuccessful) {
+                              OverlayState.faceBoxes = task.result.map { face ->
+                                  val r = face.boundingBox
+                                  // Безопасные координаты (без вылета за края экрана)
+                                  val left = max(0, r.left)
+                                  val top = max(0, r.top)
+                                  val right = min(bmp.width, r.right)
+                                  val bottom = min(bmp.height, r.bottom)
+                                  
+                                  if (right <= left || bottom <= top) return@map CensorBox(Rect(), "", null)
+
+                                  val rect = Rect(left, top, right, bottom)
+                                  
+                                  val censoredBitmap = if (mode == "black" || rect.width() < 20 || rect.height() < 20) {
+                                      null
+                                  } else {
+                                      try {
+                                          val crop = Bitmap.createBitmap(bmp, rect.left, rect.top, rect.width(), rect.height())
+                                          val small = Bitmap.createScaledBitmap(crop, max(1, crop.width / intensity), max(1, crop.height / intensity), false)
+                                          Bitmap.createScaledBitmap(small, crop.width, crop.height, mode == "blur")
+                                      } catch (e: Exception) { null }
+                                  }
+                                  CensorBox(rect, "", censoredBitmap)
+                              }
+                              OverlayState.refresh()
                           }
-                          CensorBox(rect, "", censoredBitmap)
+                      } finally {
+                          isProcessing = false // Разрешаем обработку следующего кадра
                       }
-                      OverlayState.refresh()
                   }
               }
 
@@ -429,19 +480,14 @@ jobs:
 
           import android.accessibilityservice.AccessibilityService
           import android.graphics.Rect
-          import android.os.Bundle
-          import android.os.Handler
-          import android.os.Looper
           import android.view.accessibility.AccessibilityEvent
-          import android.view.accessibility.AccessibilityNodeInfo
 
           class WordFilterAccessibilityService : AccessibilityService() {
               private var lastRun = 0L
               
               override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-                  // Защита от вылетов: обрабатываем не чаще 1 раза в 300мс
                   val now = System.currentTimeMillis()
-                  if (now - lastRun < 300) return
+                  if (now - lastRun < 500) return
                   lastRun = now
 
                   try {
@@ -461,9 +507,7 @@ jobs:
                       }
                       OverlayState.textBoxes = boxes
                       OverlayState.refresh()
-                  } catch (e: Exception) {
-                      // Игнорируем ошибки, чтобы служба не падала
-                  }
+                  } catch (e: Exception) {}
               }
               override fun onInterrupt() {}
           }
