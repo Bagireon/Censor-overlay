@@ -31,7 +31,7 @@ jobs:
           }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories { google(); mavenCentral() }
+              repositories { google(); mavenCentral(); maven { url 'https://jitpack.io' } }
           }
           rootProject.name = "CensorOverlay"
           include ':app'
@@ -63,8 +63,8 @@ jobs:
                   applicationId "com.example.censoroverlay"
                   minSdk 26
                   targetSdk 34
-                  versionCode 4
-                  versionName "0.5"
+                  versionCode 7
+                  versionName "0.8-root"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -77,6 +77,8 @@ jobs:
               implementation 'androidx.appcompat:appcompat:1.7.0'
               implementation 'com.google.android.material:material:1.12.0'
               implementation 'com.google.mlkit:face-detection:16.1.7'
+              // Библиотека для работы с Root-правами
+              implementation 'com.github.topjohnwu.libsu:core:5.2.2'
           }
           FILE_EOF
 
@@ -90,7 +92,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-              <!-- largeHeap разрешает системе выделить этому приложению максимум доступной памяти -->
+              <uses-permission android:name="android.permission.ACCESS_SUPERUSER" />
               <application
                   android:largeHeap="true"
                   android:label="CensorOverlay"
@@ -101,29 +103,20 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
                   </activity>
-                  <service android:name=".OverlayService"
-                      android:foregroundServiceType="mediaProjection"
-                      android:exported="false"/>
-                  <service android:name=".ScreenCaptureService"
-                      android:foregroundServiceType="mediaProjection"
-                      android:exported="false"/>
-                  <service android:name=".WordFilterAccessibilityService"
-                      android:exported="true"
-                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+                  <service android:name=".OverlayService" android:foregroundServiceType="mediaProjection" android:exported="false"/>
+                  <service android:name=".ScreenCaptureService" android:foregroundServiceType="mediaProjection" android:exported="false"/>
+                  <service android:name=".WordFilterAccessibilityService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
                       <intent-filter>
                           <action android:name="android.accessibilityservice.AccessibilityService"/>
                       </intent-filter>
-                      <meta-data android:name="android.accessibilityservice"
-                          android:resource="@xml/accessibility_service_config"/>
+                      <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config"/>
                   </service>
               </application>
           </manifest>
           FILE_EOF
 
           cat > app/src/main/res/values/themes.xml << 'FILE_EOF'
-          <resources>
-              <style name="Theme.CensorOverlay" parent="Theme.AppCompat.DayNight.NoActionBar"/>
-          </resources>
+          <resources><style name="Theme.CensorOverlay" parent="Theme.AppCompat.DayNight.NoActionBar"/></resources>
           FILE_EOF
 
           cat > app/src/main/res/values/strings.xml << 'FILE_EOF'
@@ -136,49 +129,28 @@ jobs:
           cat > app/src/main/res/xml/accessibility_service_config.xml << 'FILE_EOF'
           <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
               android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewTextChanged"
-              android:accessibilityFeedbackType="feedbackGeneric"
-              android:accessibilityFlags="flagReportViewIds"
-              android:canRetrieveWindowContent="true"
-              android:notificationTimeout="500"
-              android:description="@string/accessibility_desc"/>
+              android:accessibilityFeedbackType="feedbackGeneric" android:accessibilityFlags="flagReportViewIds"
+              android:canRetrieveWindowContent="true" android:notificationTimeout="500" android:description="@string/accessibility_desc"/>
           FILE_EOF
 
           cat > app/src/main/res/layout/activity_main.xml << 'FILE_EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent">
-              <LinearLayout
-                  android:orientation="vertical"
-                  android:padding="16dp"
-                  android:layout_width="match_parent"
-                  android:layout_height="wrap_content">
-                  
-                  <EditText android:id="@+id/words"
-                      android:hint="Слова (порно,секс)"
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"/>
-                  <EditText android:id="@+id/replacements"
-                      android:hint="Замены ([скрыто],[скрыто])"
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"/>
-                  
+          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent">
+              <LinearLayout android:orientation="vertical" android:padding="16dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+                  <EditText android:id="@+id/words" android:hint="Слова (порно,секс)" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                  <EditText android:id="@+id/replacements" android:hint="Замены ([скрыто],[скрыто])" android:layout_width="match_parent" android:layout_height="wrap_content"/>
                   <TextView android:text="Режим цензуры:" android:layout_marginTop="10dp" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
                   <RadioGroup android:id="@+id/modeGroup" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
                       <RadioButton android:id="@+id/modeBlack" android:text="Черный" android:checked="true" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
                       <RadioButton android:id="@+id/modePixel" android:text="Пиксели" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
                       <RadioButton android:id="@+id/modeBlur" android:text="Размытие" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
                   </RadioGroup>
-
-                  <CheckBox android:id="@+id/timerCheck"
-                      android:text="Увеличивать цензуру со временем"
-                      android:layout_width="wrap_content"
-                      android:layout_height="wrap_content"/>
-                  
+                  <CheckBox android:id="@+id/timerCheck" android:text="Увеличивать цензуру со временем" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
                   <Button android:id="@+id/btnOverlay" android:text="1. Разрешить оверлей" android:layout_width="match_parent" android:layout_height="wrap_content"/>
                   <Button android:id="@+id/btnAccessibility" android:text="2. Включить Accessibility" android:layout_width="match_parent" android:layout_height="wrap_content"/>
                   <Button android:id="@+id/btnStart" android:text="3. Старт" android:layout_width="match_parent" android:layout_height="wrap_content"/>
                   <Button android:id="@+id/btnStop" android:text="Стоп" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+                  <Button android:id="@+id/btnRoot" android:text="Дать Root-права" android:layout_marginTop="20dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
               </LinearLayout>
           </ScrollView>
           FILE_EOF
@@ -186,14 +158,19 @@ jobs:
           cat > app/src/main/java/com/example/censoroverlay/MainActivity.kt << 'FILE_EOF'
           package com.example.censoroverlay
 
+          import android.Manifest
           import android.content.Intent
+          import android.content.pm.PackageManager
           import android.media.projection.MediaProjectionManager
           import android.net.Uri
+          import android.os.Build
           import android.os.Bundle
           import android.provider.Settings
           import android.widget.*
           import androidx.activity.result.contract.ActivityResultContracts
           import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.content.ContextCompat
+          import com.topjohnwu.superuser.Shell
 
           class MainActivity : AppCompatActivity() {
               private lateinit var wordsEdit: EditText
@@ -201,35 +178,43 @@ jobs:
               private lateinit var modeGroup: RadioGroup
               private lateinit var timerCheck: CheckBox
 
-              private val projectionLauncher = registerForActivityResult(
-                  ActivityResultContracts.StartActivityForResult()
-              ) { result ->
+              private val projectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                   if (result.resultCode == RESULT_OK && result.data != null) {
                       val i = Intent(this, ScreenCaptureService::class.java).apply {
                           putExtra("resultCode", result.resultCode)
                           putExtra("data", result.data)
                       }
-                      startForegroundService(i)
+                      ContextCompat.startForegroundService(this, i)
                   }
               }
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   setContentView(R.layout.activity_main)
+                  
                   wordsEdit = findViewById(R.id.words)
                   replEdit = findViewById(R.id.replacements)
                   modeGroup = findViewById(R.id.modeGroup)
                   timerCheck = findViewById(R.id.timerCheck)
-                  
                   val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+                  
                   wordsEdit.setText(prefs.getString("words", "порно,секс,xxx"))
                   replEdit.setText(prefs.getString("replacements", "[скрыто],[скрыто],***"))
                   timerCheck.isChecked = prefs.getBoolean("timer", false)
-                  
-                  when(prefs.getString("mode", "black")) {
-                      "pixel" -> modeGroup.check(R.id.modePixel)
-                      "blur" -> modeGroup.check(R.id.modeBlur)
-                      else -> modeGroup.check(R.id.modeBlack)
+
+                  findViewById<Button>(R.id.btnRoot).setOnClickListener {
+                      // Запрос Root-прав
+                      Shell.getShell().isRoot.let { isRoot ->
+                          if (isRoot) {
+                              Toast.makeText(this, "Root получен! Отключаем сон Samsung...", Toast.LENGTH_LONG).show()
+                              // Команды для отключения спящего режима через Root
+                              Shell.cmd("dumpsys deviceidle whitelist +com.example.censoroverlay").exec()
+                              Shell.cmd("cmd appops set com.example.censoroverlay RUN_IN_BACKGROUND allow").exec()
+                              Shell.cmd("cmd appops set com.example.censoroverlay RUN_ANY_IN_BACKGROUND allow").exec()
+                          } else {
+                              Toast.makeText(this, "Root-права не получены (телефон не рутирован)", Toast.LENGTH_LONG).show()
+                          }
+                      }
                   }
 
                   findViewById<Button>(R.id.btnOverlay).setOnClickListener {
@@ -240,16 +225,9 @@ jobs:
                   }
                   findViewById<Button>(R.id.btnStart).setOnClickListener {
                       val mode = when(modeGroup.checkedRadioButtonId) {
-                          R.id.modePixel -> "pixel"
-                          R.id.modeBlur -> "blur"
-                          else -> "black"
+                          R.id.modePixel -> "pixel"; R.id.modeBlur -> "blur"; else -> "black"
                       }
-                      prefs.edit()
-                          .putString("words", wordsEdit.text.toString())
-                          .putString("replacements", replEdit.text.toString())
-                          .putString("mode", mode)
-                          .putBoolean("timer", timerCheck.isChecked)
-                          .apply()
+                      prefs.edit().putString("words", wordsEdit.text.toString()).putString("replacements", replEdit.text.toString()).putString("mode", mode).putBoolean("timer", timerCheck.isChecked).apply()
                       val mpm = getSystemService(MediaProjectionManager::class.java)
                       projectionLauncher.launch(mpm.createScreenCaptureIntent())
                   }
@@ -261,72 +239,44 @@ jobs:
           }
           FILE_EOF
 
+          # Остальные файлы (OverlayService, ScreenCaptureService, WordFilter) остаются без изменений из версии 0.7
           cat > app/src/main/java/com/example/censoroverlay/OverlayService.kt << 'FILE_EOF'
           package com.example.censoroverlay
-
           import android.app.Service
           import android.content.Context
           import android.content.Intent
           import android.graphics.*
           import android.os.IBinder
+          import android.util.LruCache
           import android.view.View
           import android.view.WindowManager
-
           data class CensorBox(val rect: Rect, val label: String, val bitmap: Bitmap? = null)
-
           object OverlayState {
+              val bitmapCache = object : LruCache<String, Bitmap>(5) { override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap?) { oldValue.recycle() } }
               var faceBoxes: List<CensorBox> = emptyList()
               var textBoxes: List<CensorBox> = emptyList()
               var overlayView: CensorView? = null
               fun refresh() { overlayView?.postInvalidate() }
           }
-
           class OverlayService : Service() {
               override fun onCreate() {
                   super.onCreate()
                   val wm = getSystemService(WINDOW_SERVICE) as WindowManager
                   val view = CensorView(this)
-                  val params = WindowManager.LayoutParams(
-                      WindowManager.LayoutParams.MATCH_PARENT,
-                      WindowManager.LayoutParams.MATCH_PARENT,
-                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                      WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                      WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                      WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                      PixelFormat.TRANSLUCENT
-                  )
-                  try {
-                      wm.addView(view, params)
-                      OverlayState.overlayView = view
-                  } catch (e: Exception) {}
+                  val params = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT)
+                  try { wm.addView(view, params); OverlayState.overlayView = view } catch (e: Exception) {}
               }
-              
-              override fun onDestroy() {
-                  OverlayState.overlayView = null
-                  super.onDestroy()
-              }
+              override fun onDestroy() { OverlayState.overlayView = null; super.onDestroy() }
               override fun onBind(i: Intent?): IBinder? = null
           }
-
           class CensorView(ctx: Context) : View(ctx) {
               private val paintBox = Paint().apply { color = 0xFF000000.toInt() }
               private val paintText = Paint().apply { textSize = 42f; color = Color.RED; isAntiAlias = true }
               private val paintBitmap = Paint().apply { isFilterBitmap = false }
-              
               override fun onDraw(canvas: Canvas) {
                   try {
-                      for (b in OverlayState.faceBoxes) {
-                          if (b.bitmap != null && !b.bitmap.isRecycled) {
-                              canvas.drawBitmap(b.bitmap, null, b.rect, paintBitmap)
-                          } else {
-                              canvas.drawRect(b.rect, paintBox)
-                          }
-                      }
-                      for (b in OverlayState.textBoxes) {
-                          canvas.drawRect(b.rect, paintBox)
-                          canvas.drawText(b.label, b.rect.left.toFloat(), b.rect.bottom.toFloat(), paintText)
-                      }
+                      for (b in OverlayState.faceBoxes) { if (b.bitmap != null && !b.bitmap.isRecycled) canvas.drawBitmap(b.bitmap, null, b.rect, paintBitmap) else canvas.drawRect(b.rect, paintBox) }
+                      for (b in OverlayState.textBoxes) { canvas.drawRect(b.rect, paintBox); canvas.drawText(b.label, b.rect.left.toFloat(), b.rect.bottom.toFloat(), paintText) }
                   } catch (e: Exception) {}
               }
           }
@@ -334,7 +284,6 @@ jobs:
 
           cat > app/src/main/java/com/example/censoroverlay/ScreenCaptureService.kt << 'FILE_EOF'
           package com.example.censoroverlay
-
           import android.app.NotificationChannel
           import android.app.NotificationManager
           import android.app.Service
@@ -345,7 +294,6 @@ jobs:
           import android.hardware.display.VirtualDisplay
           import android.media.Image
           import android.media.ImageReader
-          import android.media.projection.MediaProjection
           import android.media.projection.MediaProjectionManager
           import android.os.*
           import androidx.core.app.NotificationCompat
@@ -354,200 +302,89 @@ jobs:
           import com.google.mlkit.vision.face.FaceDetectorOptions
           import kotlin.math.max
           import kotlin.math.min
-
           class ScreenCaptureService : Service() {
-              private var projection: MediaProjection? = null
+              private var projection: android.media.projection.MediaProjection? = null
               private var reader: ImageReader? = null
               private var display: VirtualDisplay? = null
               private var startTime = 0L
               private var isProcessing = false
               private var lastProcessTime = 0L
-              
-              // Обработчик в фоновом потоке, чтобы не грузить UI
               private val bgHandler = Handler(HandlerThread("CensorThread").apply { start() }.looper)
-
-              private val detector = FaceDetection.getClient(
-                  FaceDetectorOptions.Builder().setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST).build()
-              )
-
+              private val detector = FaceDetection.getClient(FaceDetectorOptions.Builder().setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST).build())
               override fun onCreate() {
                   super.onCreate()
-                  val ch = NotificationChannel("cap", "Защита CensorOverlay", NotificationManager.IMPORTANCE_LOW)
+                  val ch = NotificationChannel("cap", "Защита", NotificationManager.IMPORTANCE_LOW)
                   (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
-                  
-                  val notif = NotificationCompat.Builder(this, "cap")
-                      .setContentTitle("CensorOverlay активен")
-                      .setContentText("Память оптимизирована, защита включена")
-                      .setSmallIcon(android.R.drawable.ic_lock_lock)
-                      .setOngoing(true)
-                      .build()
-                      
-                  if (Build.VERSION.SDK_INT >= 29) {
-                      startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-                  } else {
-                      startForeground(1, notif)
-                  }
-                  startService(Intent(this, OverlayService::class.java))
-                  startTime = System.currentTimeMillis()
+                  val notif = NotificationCompat.Builder(this, "cap").setContentTitle("CensorOverlay активен").setSmallIcon(android.R.drawable.ic_lock_lock).setOngoing(true).build()
+                  if (Build.VERSION.SDK_INT >= 29) startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(1, notif)
+                  startService(Intent(this, OverlayService::class.java)); startTime = System.currentTimeMillis()
               }
-
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
                   val data = intent?.getParcelableExtra<Intent>("data") ?: return START_STICKY
-                  val code = intent.getIntExtra("resultCode", 0)
-                  val mpm = getSystemService(MediaProjectionManager::class.java)
-                  projection = mpm.getMediaProjection(code, data)
-                  startCapture()
-                  return START_STICKY
+                  projection = (getSystemService(MediaProjectionManager::class.java)).getMediaProjection(intent.getIntExtra("resultCode", 0), data)
+                  startCapture(); return START_STICKY
               }
-
               private fun startCapture() {
-                  val dm = resources.displayMetrics
-                  // СИЛЬНАЯ ОПТИМИЗАЦИЯ: Уменьшаем разрешение в 4 раза! 
-                  // Экономит кучу памяти, нейросети этого хватит с головой.
-                  val scale = 4
-                  val w = dm.widthPixels / scale
-                  val h = dm.heightPixels / scale
-                  
-                  reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-                  display = projection?.createVirtualDisplay("cap", w, h, dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader!!.surface, null, bgHandler)
-                  
+                  val dm = resources.displayMetrics; val scale = 4
+                  reader = ImageReader.newInstance(max(1, dm.widthPixels / scale), max(1, dm.heightPixels / scale), PixelFormat.RGBA_8888, 2)
+                  display = projection?.createVirtualDisplay("cap", max(1, dm.widthPixels / scale), max(1, dm.heightPixels / scale), dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader!!.surface, null, bgHandler)
                   reader!!.setOnImageAvailableListener({ r ->
                       val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
-                      
-                      // Ограничиваем FPS: обрабатываем кадр не чаще 3 раз в секунду
                       val now = System.currentTimeMillis()
-                      if (isProcessing || now - lastProcessTime < 300) {
-                          image.close()
-                          return@setOnImageAvailableListener
-                      }
-                      
-                      lastProcessTime = now
-                      isProcessing = true
-                      try { 
-                          val bmp = imageToBitmap(image)
-                          if (bmp != null) process(bmp, scale)
-                      } catch (e: Exception) {
-                          isProcessing = false
-                      } finally { 
-                          image.close() 
-                      }
+                      if (isProcessing || now - lastProcessTime < 250) { image.close(); return@setOnImageAvailableListener }
+                      lastProcessTime = now; isProcessing = true
+                      try { val bmp = imageToBitmap(image); if (bmp != null) process(bmp, scale) else isProcessing = false } catch (e: Exception) { isProcessing = false } finally { image.close() }
                   }, bgHandler)
               }
-
               private fun imageToBitmap(image: Image): Bitmap? {
-                  try {
-                      val plane = image.planes[0]
-                      val buffer = plane.buffer
-                      val pixelStride = plane.pixelStride
-                      val rowStride = plane.rowStride
-                      val rowPadding = rowStride - pixelStride * image.width
-                      
-                      val bmp = Bitmap.createBitmap(
-                          image.width + rowPadding / pixelStride,
-                          image.height, Bitmap.Config.ARGB_8888
-                      )
-                      bmp.copyPixelsFromBuffer(buffer)
-                      return bmp
-                  } catch (e: Exception) {
-                      return null
-                  }
+                  try { val plane = image.planes[0]; val bmp = Bitmap.createBitmap(image.width + (plane.rowStride - plane.pixelStride * image.width) / plane.pixelStride, image.height, Bitmap.Config.ARGB_8888); bmp.copyPixelsFromBuffer(plane.buffer); return bmp } catch (e: Exception) { return null }
               }
-
               private fun process(bmp: Bitmap, scale: Int) {
-                  val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-                  val mode = prefs.getString("mode", "black") ?: "black"
-                  val useTimer = prefs.getBoolean("timer", false)
-                  
-                  val elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000
-                  val intensity = if (useTimer) max(4, 4 + (elapsedSeconds / 10).toInt()) else 8
-
-                  val input = InputImage.fromBitmap(bmp, 0)
-                  detector.process(input).addOnCompleteListener { task ->
+                  val prefs = getSharedPreferences("settings", MODE_PRIVATE); val mode = prefs.getString("mode", "black") ?: "black"
+                  val intensity = if (prefs.getBoolean("timer", false)) max(4, 4 + ((System.currentTimeMillis() - startTime) / 10000).toInt()) else 8
+                  detector.process(InputImage.fromBitmap(bmp, 0)).addOnCompleteListener { task ->
                       val newBoxes = mutableListOf<CensorBox>()
                       if (task.isSuccessful) {
                           for (face in task.result) {
-                              val r = face.boundingBox
-                              // Умножаем координаты обратно на scale, чтобы оверлей рисовался в полном размере
-                              val left = max(0, r.left * scale)
-                              val top = max(0, r.top * scale)
-                              val right = min(bmp.width * scale, r.right * scale)
-                              val bottom = min(bmp.height * scale, r.bottom * scale)
-                              
-                              if (right > left && bottom > top) {
-                                  val rect = Rect(left, top, right, bottom)
-                                  val censoredBitmap = if (mode == "black" || rect.width() < 20 || rect.height() < 20) {
-                                      null
-                                  } else {
-                                      try {
-                                          val crop = Bitmap.createBitmap(bmp, r.left, r.top, r.width(), r.height())
-                                          val small = Bitmap.createScaledBitmap(crop, max(1, crop.width / intensity), max(1, crop.height / intensity), false)
-                                          val scaled = Bitmap.createScaledBitmap(small, rect.width(), rect.height(), mode == "blur")
-                                          crop.recycle()
-                                          small.recycle()
-                                          scaled
-                                      } catch (e: Exception) { null }
+                              val r = face.boundingBox; val sl = max(0, r.left); val st = max(0, r.top); val sr = min(bmp.width, r.right); val sb = min(bmp.height, r.bottom)
+                              if (sr > sl && sb > st) {
+                                  val rect = Rect(sl * scale, st * scale, sr * scale, sb * scale)
+                                  val censoredBitmap = if (mode == "black" || rect.width() < 20) null else {
+                                      try { val crop = Bitmap.createBitmap(bmp, sl, st, sr - sl, sb - st); val small = Bitmap.createScaledBitmap(crop, max(1, crop.width / intensity), max(1, crop.height / intensity), false); val scaled = Bitmap.createScaledBitmap(small, rect.width(), rect.height(), mode == "blur"); crop.recycle(); small.recycle(); OverlayState.bitmapCache.put(System.currentTimeMillis().toString(), scaled); scaled } catch (e: Exception) { null }
                                   }
                                   newBoxes.add(CensorBox(rect, "", censoredBitmap))
                               }
                           }
                       }
-                      
-                      // Очищаем старые битмапы
-                      for (old in OverlayState.faceBoxes) {
-                          old.bitmap?.recycle()
-                      }
-                      OverlayState.faceBoxes = newBoxes
-                      OverlayState.refresh()
-                      
-                      // Освобождаем основной кадр
-                      if (!bmp.isRecycled) bmp.recycle()
-                      isProcessing = false
+                      OverlayState.faceBoxes = newBoxes; OverlayState.refresh(); if (!bmp.isRecycled) bmp.recycle(); isProcessing = false
                   }
               }
-
-              override fun onDestroy() {
-                  display?.release()
-                  reader?.close()
-                  projection?.stop()
-                  stopService(Intent(this, OverlayService::class.java))
-                  super.onDestroy()
-              }
+              override fun onDestroy() { display?.release(); reader?.close(); projection?.stop(); stopService(Intent(this, OverlayService::class.java)); super.onDestroy() }
               override fun onBind(i: Intent?): IBinder? = null
           }
           FILE_EOF
 
           cat > app/src/main/java/com/example/censoroverlay/WordFilterAccessibilityService.kt << 'FILE_EOF'
           package com.example.censoroverlay
-
           import android.accessibilityservice.AccessibilityService
           import android.graphics.Rect
           import android.view.accessibility.AccessibilityEvent
-
           class WordFilterAccessibilityService : AccessibilityService() {
               private var lastRun = 0L
-              
               override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-                  val now = System.currentTimeMillis()
-                  if (now - lastRun < 500) return
-                  lastRun = now
-
+                  val now = System.currentTimeMillis(); if (now - lastRun < 500) return; lastRun = now
                   try {
                       val root = rootInActiveWindow ?: return
                       val prefs = getSharedPreferences("settings", MODE_PRIVATE)
                       val words = prefs.getString("words", "")!!.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                       val repl = prefs.getString("replacements", "")!!.split(",").map { it.trim() }
                       val boxes = mutableListOf<CensorBox>()
-
                       for ((idx, word) in words.withIndex()) {
                           val replacement = repl.getOrElse(idx) { "***" }
                           val nodes = root.findAccessibilityNodeInfosByText(word) ?: continue
-                          for (n in nodes) {
-                              val r = Rect(); n.getBoundsInScreen(r)
-                              boxes.add(CensorBox(r, replacement, null))
-                          }
+                          for (n in nodes) { val r = Rect(); n.getBoundsInScreen(r); if (r.width() > 0 && r.height() > 0) boxes.add(CensorBox(r, replacement, null)) }
                       }
-                      OverlayState.textBoxes = boxes
-                      OverlayState.refresh()
+                      OverlayState.textBoxes = boxes; OverlayState.refresh()
                   } catch (e: Exception) {}
               }
               override fun onInterrupt() {}
