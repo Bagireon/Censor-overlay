@@ -63,8 +63,8 @@ jobs:
                   applicationId "com.example.censoroverlay"
                   minSdk 26
                   targetSdk 34
-                  versionCode 9
-                  versionName "1.0"
+                  versionCode 10
+                  versionName "1.1"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -362,20 +362,20 @@ jobs:
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  // ЗАЩИТА ОТ ВЫЛЕТА: Если интент пустой (система перезапустила службу), ничего не делаем
-                  if (intent == null || intent.getParcelableExtra<Intent>("data") == null) {
+                  // ИСПРАВЛЕНИЕ: Безопасное получение данных без ошибок вывода типов
+                  @Suppress("DEPRECATION")
+                  val data = intent?.getParcelableExtra("data") as? Intent
+                  if (data == null) {
                       return START_NOT_STICKY
                   }
                   
-                  if (projection != null) return START_NOT_STICKY // Уже запущено
+                  if (projection != null) return START_NOT_STICKY
 
                   try {
-                      val data = intent.getParcelableExtra<Intent>("data")!!
                       val code = intent.getIntExtra("resultCode", 0)
                       val mpm = getSystemService(MediaProjectionManager::class.java)
                       projection = mpm.getMediaProjection(code, data)
                       
-                      // ИСПРАВЛЕНИЕ ДЛЯ ANDROID 14+: Обязательно регистрируем Callback перед стартом
                       projection?.registerCallback(object : MediaProjection.Callback() {
                           override fun onStop() {
                               stopSelf()
