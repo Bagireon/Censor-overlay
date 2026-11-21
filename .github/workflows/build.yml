@@ -1,1 +1,464 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: Scaffold Android project
+        run: |
+          mkdir -p app/src/main/java/com/example/censoroverlay
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/xml
+
+          cat > settings.gradle << 'FILE_EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "CensorOverlay"
+          include ':app'
+          FILE_EOF
+
+          cat > build.gradle << 'FILE_EOF'
+          plugins {
+              id 'com.android.application' version '8.5.0' apply false
+              id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
+          }
+          FILE_EOF
+
+          cat > gradle.properties << 'FILE_EOF'
+          org.gradle.jvmargs=-Xmx2048m
+          android.useAndroidX=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          FILE_EOF
+
+          cat > app/build.gradle << 'FILE_EOF'
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+          android {
+              namespace 'com.example.censoroverlay'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.example.censoroverlay"
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 1
+                  versionName "0.1"
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = '17' }
+          }
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.13.1'
+              implementation 'androidx.appcompat:appcompat:1.7.0'
+              implementation 'com.google.android.material:material:1.12.0'
+              implementation 'com.google.mlkit:face-detection:16.1.7'
+          }
+          FILE_EOF
+
+          cat > app/proguard-rules.pro << 'FILE_EOF'
+          FILE_EOF
+
+          cat > app/src/main/AndroidManifest.xml << 'FILE_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <application
+                  android:label="CensorOverlay"
+                  android:theme="@style/Theme.CensorOverlay">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <service android:name=".OverlayService"
+                      android:foregroundServiceType="mediaProjection"
+                      android:exported="false"/>
+                  <service android:name=".ScreenCaptureService"
+                      android:foregroundServiceType="mediaProjection"
+                      android:exported="false"/>
+                  <service android:name=".WordFilterAccessibilityService"
+                      android:exported="true"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService"/>
+                      </intent-filter>
+                      <meta-data android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_service_config"/>
+                  </service>
+              </application>
+          </manifest>
+          FILE_EOF
+
+          cat > app/src/main/res/values/themes.xml << 'FILE_EOF'
+          <resources>
+              <style name="Theme.CensorOverlay" parent="Theme.AppCompat.DayNight.NoActionBar"/>
+          </resources>
+          FILE_EOF
+
+          cat > app/src/main/res/values/strings.xml << 'FILE_EOF'
+          <resources>
+              <string name="app_name">CensorOverlay</string>
+              <string name="accessibility_desc">Фильтр нежелательных слов поверх других приложений</string>
+          </resources>
+          FILE_EOF
+
+          cat > app/src/main/res/xml/accessibility_service_config.xml << 'FILE_EOF'
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewTextChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagReportViewIds"
+              android:canRetrieveWindowContent="true"
+              android:notificationTimeout="100"
+              android:description="@string/accessibility_desc"/>
+          FILE_EOF
+
+          cat > app/src/main/res/layout/activity_main.xml << 'FILE_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:orientation="vertical"
+              android:padding="16dp"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent">
+              <EditText android:id="@+id/words"
+                  android:hint="Слова через запятую (порно,секс,xxx)"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"/>
+              <EditText android:id="@+id/replacements"
+                  android:hint="Замены через запятую ([скрыто],[скрыто],***)"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"/>
+              <CheckBox android:id="@+id/faceCheck"
+                  android:text="Пикселизовать лица"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"/>
+              <Button android:id="@+id/btnOverlay"
+                  android:text="1. Разрешить оверлей"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"/>
+              <Button android:id="@+id/btnAccessibility"
+                  android:text="2. Включить Accessibility"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"/>
+              <Button android:id="@+id/btnStart"
+                  android:text="3. Старт"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"/>
+              <Button android:id="@+id/btnStop"
+                  android:text="Стоп"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"/>
+          </LinearLayout>
+          FILE_EOF
+
+          cat > app/src/main/java/com/example/censoroverlay/MainActivity.kt << 'FILE_EOF'
+          package com.example.censoroverlay
+
+          import android.content.Intent
+          import android.media.projection.MediaProjectionManager
+          import android.net.Uri
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.widget.Button
+          import android.widget.CheckBox
+          import android.widget.EditText
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.appcompat.app.AppCompatActivity
+
+          class MainActivity : AppCompatActivity() {
+              private lateinit var wordsEdit: EditText
+              private lateinit var replEdit: EditText
+              private lateinit var faceCheck: CheckBox
+
+              private val projectionLauncher = registerForActivityResult(
+                  ActivityResultContracts.StartActivityForResult()
+              ) { result ->
+                  if (result.resultCode == RESULT_OK && result.data != null) {
+                      val i = Intent(this, ScreenCaptureService::class.java).apply {
+                          putExtra("resultCode", result.resultCode)
+                          putExtra("data", result.data)
+                      }
+                      startForegroundService(i)
+                  }
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+                  wordsEdit = findViewById(R.id.words)
+                  replEdit = findViewById(R.id.replacements)
+                  faceCheck = findViewById(R.id.faceCheck)
+                  val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+                  wordsEdit.setText(prefs.getString("words", "порно,секс,xxx"))
+                  replEdit.setText(prefs.getString("replacements", "[скрыто],[скрыто],***"))
+                  faceCheck.isChecked = prefs.getBoolean("face", true)
+                  findViewById<Button>(R.id.btnOverlay).setOnClickListener {
+                      startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                          Uri.parse("package:$packageName")))
+                  }
+                  findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
+                      startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                  }
+                  findViewById<Button>(R.id.btnStart).setOnClickListener {
+                      prefs.edit()
+                          .putString("words", wordsEdit.text.toString())
+                          .putString("replacements", replEdit.text.toString())
+                          .putBoolean("face", faceCheck.isChecked)
+                          .apply()
+                      val mpm = getSystemService(MediaProjectionManager::class.java)
+                      projectionLauncher.launch(mpm.createScreenCaptureIntent())
+                  }
+                  findViewById<Button>(R.id.btnStop).setOnClickListener {
+                      stopService(Intent(this, ScreenCaptureService::class.java))
+                      stopService(Intent(this, OverlayService::class.java))
+                  }
+              }
+          }
+          FILE_EOF
+
+          cat > app/src/main/java/com/example/censoroverlay/OverlayService.kt << 'FILE_EOF'
+          package com.example.censoroverlay
+
+          import android.app.Service
+          import android.content.Context
+          import android.content.Intent
+          import android.graphics.Canvas
+          import android.graphics.Color
+          import android.graphics.Paint
+          import android.graphics.PixelFormat
+          import android.graphics.Rect
+          import android.os.IBinder
+          import android.view.View
+          import android.view.WindowManager
+
+          data class CensorBox(val rect: Rect, val label: String, val pixelate: Boolean)
+
+          object OverlayState {
+              var faceBoxes: List<CensorBox> = emptyList()
+              var textBoxes: List<CensorBox> = emptyList()
+              var overlayView: CensorView? = null
+              fun refresh() { overlayView?.postInvalidate() }
+          }
+
+          class OverlayService : Service() {
+              override fun onCreate() {
+                  super.onCreate()
+                  val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+                  val view = CensorView(this)
+                  val params = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                      WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                      WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                      WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  wm.addView(view, params)
+                  OverlayState.overlayView = view
+              }
+              override fun onBind(i: Intent?): IBinder? = null
+          }
+
+          class CensorView(ctx: Context) : View(ctx) {
+              private val paintBox = Paint().apply { color = 0xFF000000.toInt() }
+              private val paintText = Paint().apply {
+                  textSize = 42f; color = Color.RED; isAntiAlias = true
+              }
+              override fun onDraw(canvas: Canvas) {
+                  for (b in OverlayState.faceBoxes) canvas.drawRect(b.rect, paintBox)
+                  for (b in OverlayState.textBoxes) {
+                      canvas.drawRect(b.rect, paintBox)
+                      canvas.drawText(b.label, b.rect.left.toFloat(),
+                          b.rect.bottom.toFloat(), paintText)
+                  }
+              }
+          }
+          FILE_EOF
+
+          cat > app/src/main/java/com/example/censoroverlay/ScreenCaptureService.kt << 'FILE_EOF'
+          package com.example.censoroverlay
+
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.Service
+          import android.content.Intent
+          import android.content.pm.ServiceInfo
+          import android.graphics.Bitmap
+          import android.graphics.PixelFormat
+          import android.graphics.Rect
+          import android.hardware.display.DisplayManager
+          import android.hardware.display.VirtualDisplay
+          import android.media.Image
+          import android.media.ImageReader
+          import android.media.projection.MediaProjection
+          import android.media.projection.MediaProjectionManager
+          import android.os.Build
+          import android.os.Handler
+          import android.os.IBinder
+          import android.os.Looper
+          import androidx.core.app.NotificationCompat
+          import com.google.mlkit.vision.common.InputImage
+          import com.google.mlkit.vision.face.FaceDetection
+          import com.google.mlkit.vision.face.FaceDetectorOptions
+
+          class ScreenCaptureService : Service() {
+              private var projection: MediaProjection? = null
+              private var reader: ImageReader? = null
+              private var display: VirtualDisplay? = null
+
+              private val detector = FaceDetection.getClient(
+                  FaceDetectorOptions.Builder()
+                      .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                      .build()
+              )
+
+              override fun onCreate() {
+                  super.onCreate()
+                  val ch = NotificationChannel("cap", "Capture", NotificationManager.IMPORTANCE_LOW)
+                  (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
+                  val notif = NotificationCompat.Builder(this, "cap")
+                      .setContentTitle("CensorOverlay")
+                      .setContentText("Работает")
+                      .setSmallIcon(android.R.drawable.ic_menu_view)
+                      .build()
+                  if (Build.VERSION.SDK_INT >= 29) {
+                      startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                  } else startForeground(1, notif)
+                  startService(Intent(this, OverlayService::class.java))
+              }
+
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  val data = intent?.getParcelableExtra<Intent>("data") ?: return START_STICKY
+                  val code = intent.getIntExtra("resultCode", 0)
+                  val mpm = getSystemService(MediaProjectionManager::class.java)
+                  projection = mpm.getMediaProjection(code, data)
+                  startCapture()
+                  return START_STICKY
+              }
+
+              private fun startCapture() {
+                  val dm = resources.displayMetrics
+                  val w = dm.widthPixels; val h = dm.heightPixels
+                  reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
+                  display = projection?.createVirtualDisplay("cap", w, h,
+                      dm.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                      reader!!.surface, null, Handler(Looper.getMainLooper()))
+                  reader!!.setOnImageAvailableListener({ r ->
+                      val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
+                      try { process(imageToBitmap(image)) } finally { image.close() }
+                  }, Handler(Looper.getMainLooper()))
+              }
+
+              private fun imageToBitmap(image: Image): Bitmap {
+                  val plane = image.planes[0]
+                  val pixelStride = plane.pixelStride
+                  val rowStride = plane.rowStride
+                  val rowPadding = rowStride - pixelStride * image.width
+                  val bmp = Bitmap.createBitmap(
+                      image.width + rowPadding / pixelStride,
+                      image.height, Bitmap.Config.ARGB_8888)
+                  bmp.copyPixelsFromBuffer(plane.buffer)
+                  return bmp
+              }
+
+              private fun process(bmp: Bitmap) {
+                  val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+                  if (!prefs.getBoolean("face", true)) return
+                  detector.process(InputImage.fromBitmap(bmp, 0)).addOnSuccessListener { faces ->
+                      OverlayState.faceBoxes = faces.map {
+                          val r = it.boundingBox
+                          CensorBox(Rect(r.left, r.top, r.right, r.bottom), "", true)
+                      }
+                      OverlayState.refresh()
+                  }
+              }
+
+              override fun onDestroy() {
+                  display?.release(); reader?.close(); projection?.stop()
+                  stopService(Intent(this, OverlayService::class.java))
+                  super.onDestroy()
+              }
+
+              override fun onBind(i: Intent?): IBinder? = null
+          }
+          FILE_EOF
+
+          cat > app/src/main/java/com/example/censoroverlay/WordFilterAccessibilityService.kt << 'FILE_EOF'
+          package com.example.censoroverlay
+
+          import android.accessibilityservice.AccessibilityService
+          import android.graphics.Rect
+          import android.os.Bundle
+          import android.view.accessibility.AccessibilityEvent
+          import android.view.accessibility.AccessibilityNodeInfo
+
+          class WordFilterAccessibilityService : AccessibilityService() {
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+                  val root = rootInActiveWindow ?: return
+                  val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+                  val words = prefs.getString("words", "")!!
+                      .split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                  val repl = prefs.getString("replacements", "")!!
+                      .split(",").map { it.trim() }
+                  val boxes = mutableListOf<CensorBox>()
+                  for ((idx, word) in words.withIndex()) {
+                      val replacement = repl.getOrElse(idx) { "***" }
+                      val nodes = root.findAccessibilityNodeInfosByText(word) ?: continue
+                      for (n in nodes) {
+                          if (n.isEditable) {
+                              val bundle = Bundle().apply {
+                                  putCharSequence(
+                                      AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                                      n.text.toString().replace(word, replacement))
+                              }
+                              n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+                          } else {
+                              val r = Rect(); n.getBoundsInScreen(r)
+                              boxes.add(CensorBox(r, replacement, false))
+                          }
+                      }
+                  }
+                  OverlayState.textBoxes = boxes
+                  OverlayState.refresh()
+              }
+              override fun onInterrupt() {}
+          }
+          FILE_EOF
+
+      - name: Build APK
+        run: gradle assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: censor-overlay-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
