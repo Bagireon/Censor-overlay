@@ -63,8 +63,8 @@ jobs:
                   applicationId "com.example.censoroverlay"
                   minSdk 26
                   targetSdk 34
-                  versionCode 10
-                  versionName "1.1"
+                  versionCode 11
+                  versionName "1.2"
               }
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
@@ -362,7 +362,6 @@ jobs:
               }
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  // ИСПРАВЛЕНИЕ: Безопасное получение данных без ошибок вывода типов
                   @Suppress("DEPRECATION")
                   val data = intent?.getParcelableExtra("data") as? Intent
                   if (data == null) {
@@ -376,11 +375,12 @@ jobs:
                       val mpm = getSystemService(MediaProjectionManager::class.java)
                       projection = mpm.getMediaProjection(code, data)
                       
+                      // ИСПРАВЛЕНИЕ: Добавлен обязательный параметр bgHandler
                       projection?.registerCallback(object : MediaProjection.Callback() {
                           override fun onStop() {
                               stopSelf()
                           }
-                      })
+                      }, bgHandler)
                       
                       startCapture()
                   } catch (e: Exception) {
